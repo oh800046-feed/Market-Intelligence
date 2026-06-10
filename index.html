@@ -3466,6 +3466,16 @@ body.dark #view-salesforecast .sv-mode-btn.active{background:var(--accent-gold);
 #view-salesforecast .sv-pill.neg{background:rgba(160,40,56,.12);color:var(--signal-neg);}
 #view-salesforecast .sv-pill.done{background:rgba(30,64,175,.12);color:var(--signal-info);}
 #view-salesforecast .sv-method-note{font-size:12px;line-height:1.7;color:var(--ink-mid);background:var(--paper-warm);border:1px solid var(--border-soft);border-left:3px solid var(--accent-gold);border-radius:10px;padding:14px 18px;margin-top:8px;}
+#view-salesforecast .sv-method-fold{margin-top:10px;border:1px solid var(--border-soft);border-radius:10px;background:var(--paper);overflow:hidden;}
+#view-salesforecast .sv-method-fold-summary{cursor:pointer;list-style:none;padding:12px 16px;font-size:13px;font-weight:700;color:var(--ink);background:var(--paper-warm);display:flex;align-items:center;gap:8px;user-select:none;}
+#view-salesforecast .sv-method-fold-summary::-webkit-details-marker{display:none;}
+#view-salesforecast .sv-method-fold-summary::before{content:'\25B8';color:var(--accent-deep);font-size:12px;transition:transform .15s;}
+#view-salesforecast .sv-method-fold[open] .sv-method-fold-summary::before{transform:rotate(90deg);}
+#view-salesforecast .sv-method-fold-summary:hover{background:var(--border-soft);}
+#view-salesforecast .sv-method-fold-hint{font-size:11px;font-weight:500;color:var(--ink-light);}
+#view-salesforecast .sv-method-fold[open] .sv-method-fold-hint{display:none;}
+#view-salesforecast .sv-method-fold .sv-method-note{margin:0;border:none;border-top:1px solid var(--border-soft);border-left:3px solid var(--accent-gold);border-radius:0;}
+body.dark #view-salesforecast .sv-method-fold{background:var(--paper-warm);}
 body.dark #view-salesforecast .sv-field select,body.dark #view-salesforecast .sv-btn,body.dark #view-salesforecast .sv-upload-btn{background:var(--paper-warm);}
 @media(max-width:900px){#view-salesforecast .sv-chart-row{grid-template-columns:1fr;}}
 #view-salesforecast .sv-btn-soon{opacity:.5;cursor:not-allowed;border-style:dashed;}
@@ -10903,8 +10913,8 @@ body.dark .df-attach-close,body.dark .df-attach-btn{background:#0A1424;color:var
 
   <!-- 월별 추이: 축종별 6월 예측 vs 전월 그래프 바로 아래 -->
   <div class="sv-chart-card">
-    <div class="sv-chart-head"><span class="sv-chart-title" title="월별 실적(확정)과 예측을 누적 막대로, 계획·전년을 선으로 표시합니다. 막대에 마우스를 올리면 전년 대비 증감률이 나타납니다.">월별 추이 — 실적 · 예측 · 계획 · 전년</span><span class="sv-chart-sub" id="svChartScope">전체</span></div>
-    <div class="sv-canvas-box"><canvas id="svMonthlyChart"></canvas></div>
+    <div class="sv-chart-head"><span class="sv-chart-title" title="확정 실적과 예측을 누적 막대로, 계획·전년을 선/막대로 표시합니다. 실적이 있는 달과 당월 예측월(다음 1개월)까지만 올해 막대를 표시하고, 그 이후 달은 전년·계획만 표시합니다.">월별 추이 — 실적 · 예측 · 계획 · 전년</span><span class="sv-chart-sub" id="svChartScope">전체</span></div>
+    <div class="sv-canvas-box" style="height:360px;"><canvas id="svMonthlyChart"></canvas></div>
   </div>
 
   <!-- ===== 보조: 연간/추이/피봇 (탭) ===== -->
@@ -10919,7 +10929,7 @@ body.dark .df-attach-close,body.dark .df-attach-btn{background:#0A1424;color:var
 
     <div class="sv-pane active" id="sv-pane-annual">
       <div class="sv-chart-card">
-        <div class="sv-chart-head"><span class="sv-chart-title" title="축종별 연간 사업계획 대비 예측 달성도를 도넛으로 표시합니다. 도넛에 마우스를 올리면 계획·예측·달성률이 나타납니다.">사업계획 대비 연간 예측 — 축종별 달성도</span><span class="sv-chart-sub">계획 대비 예측 (단위 천톤)</span></div>
+        <div class="sv-chart-head"><span class="sv-chart-title" title="축종별 사업계획 대비 달성도를 도넛으로 표시합니다. 실적이 있는 달(1~마지막 실적월)까지만 실적·계획을 누계하여 달성률을 산출합니다. 도넛에 마우스를 올리면 계획·실적·달성률이 나타납니다.">사업계획 대비 달성률 — 축종별 (실적 기준)</span><span class="sv-chart-sub">실적 누계 대비 계획 (단위 천톤)</span></div>
         <div class="sv-donut-grid">
           <div class="sv-donut-cell"><div class="sv-donut-title" id="svDonutTitle0">양돈</div><div class="sv-donut-canvas"><canvas id="svDonut0"></canvas></div></div>
           <div class="sv-donut-cell"><div class="sv-donut-title" id="svDonutTitle1">축우</div><div class="sv-donut-canvas"><canvas id="svDonut1"></canvas></div></div>
@@ -10966,11 +10976,10 @@ body.dark .df-attach-close,body.dark .df-attach-btn{background:#0A1424;color:var
     </div>
 
     <div class="sv-pane" id="sv-pane-method">
+      <div class="sv-method-note" id="svMethodNoteBrief"></div>
       <div id="svMethodPane"></div>
     </div>
   </div>
-
-  <div class="sv-method-note" id="svMethodNoteBrief"></div>
 </section>
 </section>
 
@@ -17570,12 +17579,12 @@ setTimeout(initExecutiveScenarioLab, 800);
     var fcLabel   = ytd ? ('올해 1~'+bm+'월') : (T.m+'월 예측');
     if(ytd){
       document.getElementById('svMainChartTitle').textContent = '축종별 1~'+bm+'월 누계 (올해 vs 전년)';
-      document.getElementById('svMainChartTitle').title = '올해 1월~'+bm+'월 누계(실적+예측)를 전년 동기 누계 및 누계 계획과 비교합니다. 막대에 마우스를 올리면 전년 대비 증감과 계획 달성률이 나타납니다. 단위 천톤.';
-      document.getElementById('svMainChartSub').textContent = '누계 계획 · 전년 1~'+bm+'월 · 올해 1~'+bm+'월(실적+예측) · 양돈/축우=팀 합산, 양계/양어=영업소 · 막대값 단위 천톤';
+      document.getElementById('svMainChartTitle').title = '올해 1월~'+bm+'월 누계(실적+예측)를 전년 동기 누계와 비교합니다(계획 제외). 막대에 마우스를 올리면 전년 대비 증감이 나타납니다. 단위 천톤.';
+      document.getElementById('svMainChartSub').textContent = '전년 1~'+bm+'월 · 올해 1~'+bm+'월(실적+예측) (계획 제외) · 양돈/축우=팀 합산, 양계/양어=영업소 · 막대값 단위 천톤';
     } else {
       document.getElementById('svMainChartTitle').textContent = '축종별 '+T.m+'월 예측 vs 전월 실적';
-      document.getElementById('svMainChartTitle').title = '축종별로 영업소(양계·양어) 또는 팀(양돈·축우) 단위의 계획·전월실적·이번달예측을 비교합니다. 막대에 마우스를 올리면 전월 대비 증감과 달성률이 나타납니다. 막대값 단위는 천톤입니다.';
-      document.getElementById('svMainChartSub').textContent = '계획 · 전월실적 · 이번달예측 · 양돈/축우=팀 합산, 양계/양어=영업소 · 막대값 단위 천톤';
+      document.getElementById('svMainChartTitle').title = '축종별로 영업소(양계·양어) 또는 팀(양돈·축우) 단위의 전월실적·이번달예측을 비교합니다(계획 제외). 막대에 마우스를 올리면 전월 대비 증감이 나타납니다. 막대값 단위는 천톤입니다.';
+      document.getElementById('svMainChartSub').textContent = '전월실적 · 이번달예측 (계획 제외) · 양돈/축우=팀 합산, 양계/양어=영업소 · 막대값 단위 천톤';
     }
     var SPECIES=['양돈','축우','양계','양어'];
     var TEAM_MODE={'양돈':true,'축우':true,'양계':false,'양어':false};
@@ -17634,8 +17643,6 @@ setTimeout(initExecutiveScenarioLab, 800);
       charts[cid]=new Chart(el,{
         type:'bar',
         data:{labels:labels,datasets:[
-          {label:ytd?'누계 계획':'계획',data:planArr,backgroundColor:'#A02838',
-            datalabels:{display:function(c){return c.dataset.data[c.dataIndex]>0;},anchor:'end',align:'end',offset:2,rotation:0,backgroundColor:null,borderWidth:0,padding:0,color:'#A02838',font:{size:10,weight:'700'},formatter:function(v){return v>=1000?(v/1000).toFixed(1)+'천':Math.round(v);}}},
           {label:prevLabel,data:prevArr,backgroundColor:'#5A7DA0',
             datalabels:{display:function(c){return c.dataset.data[c.dataIndex]>0;},anchor:'end',align:'end',offset:2,rotation:0,backgroundColor:null,borderWidth:0,padding:0,color:isDark()?'#8FA8C8':'#3A5878',font:{size:10,weight:'700'},formatter:function(v){return v>=1000?(v/1000).toFixed(1)+'천':Math.round(v);}}},
           {label:fcLabel,data:fcArr,backgroundColor:'#C9A961',
@@ -17648,7 +17655,7 @@ setTimeout(initExecutiveScenarioLab, 800);
             tooltip:{callbacks:{
               title:function(items){return items[0].label;},
               label:function(c){return c.dataset.label+': '+(c.parsed.y!=null?c.parsed.y.toLocaleString('ko-KR')+' 톤':'-');},
-              afterBody:function(items){var i=items[0].dataIndex;var pl=planArr[i],pv=prevArr[i],fv=fcArr[i];var dp=pv?((fv-pv)/pv*100):0;var ach=pl?((fv/pl)*100):0;return [compareLbl+': '+(fv-pv>=0?'+':'')+(fv-pv).toLocaleString('ko-KR')+'톤 ('+(dp>=0?'+':'')+dp.toFixed(1)+'%)','계획 달성률: '+ach.toFixed(1)+'%'];}
+              afterBody:function(items){var i=items[0].dataIndex;var pv=prevArr[i],fv=fcArr[i];var dp=pv?((fv-pv)/pv*100):0;return [compareLbl+': '+(fv-pv>=0?'+':'')+(fv-pv).toLocaleString('ko-KR')+'톤 ('+(dp>=0?'+':'')+dp.toFixed(1)+'%)'];}
             }}},
           scales:{x:{grid:{display:false},ticks:{color:tickC(),font:{size:10},maxRotation:0,minRotation:0}},
             y:{beginAtZero:true,grid:{color:gridC()},ticks:{color:tickC(),font:{size:9},callback:function(v){return (v/1000).toFixed(0)+'천톤';}}}}}
@@ -17701,24 +17708,30 @@ setTimeout(initExecutiveScenarioLab, 800);
 
     // ===== 보조 탭: 월별 추이 (실적/예측 분리 누적 + 계획/전년 라인) =====
     destroyChart('svMonthlyChart');
-    var actBar=rows.map(function(r){return r.status==='forecast'?0:Math.round(r.act/1000);});
-    var remBar=rows.map(function(r){return Math.round(Math.max(0,(r.fc-r.act))/1000);}); // 잔여/미래 예측분
+    // 예측 물량은 '실적이 있는 달'에만 산출/표시합니다. 실적이 전혀 없는 월(미래월)은 예측 없이 전년·계획만 표시.
+    // 실적(확정): 실적이 있는 월만
+    var actBar=rows.map(function(r){return (r.status==='forecast'||r.act<=0)?0:Math.round(r.act/1000);});
+    // 예측분(잔여): 실적이 있는 달의 잔여예측만. 실적이 없는 달은 0 → 예측 막대 없음
+    var remBar=rows.map(function(r){
+      if(r.status!=='forecast' && r.act>0) return Math.round(Math.max(0,(r.fc-r.act))/1000); // 실적 있는 달의 잔여
+      return 0; // 실적이 없는 달(미래월 포함): 예측 미표시
+    });
     var planArr2=rows.map(function(r){return Math.round(r.plan/1000);});
     var lyArr2=rows.map(function(r){return Math.round(r.ly/1000);});
     charts.svMonthlyChart=new Chart(document.getElementById('svMonthlyChart'),{
       data:{labels:labels,datasets:[
         // 막대 1: 전년 실적
         {type:'bar',label:'전년',data:lyArr2,backgroundColor:'#5A7DA0',stack:'ly',order:3,
-          datalabels:{display:function(c){return c.dataset.data[c.dataIndex]>0;},anchor:'end',align:'end',offset:2,backgroundColor:null,borderWidth:0,color:isDark()?'#8FA8C8':'#3A5878',font:{size:10,weight:'700'},
+          datalabels:{display:function(c){return c.dataset.data[c.dataIndex]>0;},anchor:'end',align:'end',offset:3,backgroundColor:null,borderWidth:0,color:isDark()?'#8FA8C8':'#3A5878',font:{size:9.5,weight:'700'},
             formatter:function(v){return (v/1000).toFixed(1);}}},
-        // 막대 2: 올해 실적(확정)+예측 — 한 막대 누적, 합계 라벨 표시
+        // 막대 2: 올해 실적(확정)+예측 — 실적월·활성예측월(curM+1)만 표시, 합계 라벨
         {type:'bar',label:'실적(확정)',data:actBar,backgroundColor:'#1B2A41',stack:'cur',order:3,datalabels:{display:false}},
         {type:'bar',label:'예측',data:remBar,backgroundColor:'#C9A961',stack:'cur',order:3,
-          datalabels:{display:function(ctx){var i=ctx.dataIndex;return (actBar[i]+remBar[i])>0;},anchor:'end',align:'end',offset:2,backgroundColor:null,borderWidth:0,color:isDark()?'#EADFC8':'#1B2A41',font:{size:11,weight:'800'},
+          datalabels:{display:function(ctx){var i=ctx.dataIndex;return (actBar[i]+remBar[i])>0;},anchor:'end',align:'end',offset:3,backgroundColor:null,borderWidth:0,color:isDark()?'#EADFC8':'#1B2A41',font:{size:10.5,weight:'800'},
             formatter:function(v,ctx){var i=ctx.dataIndex;var tot=actBar[i]+remBar[i];return tot?(tot/1000).toFixed(1):'';}}},
         // 선: 계획(목표)
         {type:'line',label:'계획(목표)',data:planArr2,borderColor:'#A02838',backgroundColor:'#A02838',borderWidth:2.5,tension:.3,order:1,pointRadius:3,pointBackgroundColor:'#A02838',pointBorderColor:'#fff',pointBorderWidth:1.5,
-          datalabels:{display:function(c){return c.dataset.data[c.dataIndex]>0;},align:'top',anchor:'end',offset:6,backgroundColor:null,borderWidth:0,color:'#A02838',font:{size:10.5,weight:'800'},
+          datalabels:{display:function(c){return c.dataset.data[c.dataIndex]>0;},align:'top',anchor:'end',offset:7,backgroundColor:isDark()?'rgba(10,20,36,0.7)':'rgba(255,255,255,0.78)',borderRadius:3,padding:{top:1,bottom:1,left:3,right:3},color:'#A02838',font:{size:10,weight:'800'},
             formatter:function(v){return (v/1000).toFixed(1);}}}
       ]},
       options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},layout:{padding:{top:34}},
@@ -17726,15 +17739,24 @@ setTimeout(initExecutiveScenarioLab, 800);
           tooltip:{callbacks:{
             title:function(items){return items[0].label;},
             label:function(c){return c.dataset.label+': '+(c.parsed.y!=null?c.parsed.y.toLocaleString('ko-KR')+' 톤':'-');},
-            afterBody:function(items){var i=items[0].dataIndex;var r=rows[i];if(!r)return '';var ach=r.plan?((r.fc/r.plan)*100):0;var yo=r.ly?(((r.fc)/r.ly-1)*100):0;return ['올해 합계(실적+예측): '+Math.round(r.fc/1000).toLocaleString('ko-KR')+' 톤','계획 달성률: '+ach.toFixed(1)+'%','전년 대비: '+(yo>=0?'+':'')+yo.toFixed(1)+'%'];}
+            afterBody:function(items){var i=items[0].dataIndex;var r=rows[i];if(!r)return '';var ach=r.plan?((r.fc/r.plan)*100):0;var yo=r.ly?(((r.fc)/r.ly-1)*100):0;
+              if(r.status==='forecast' || r.act<=0){ return [r.m+'월 · 실적 없음 (예측 미산출)','전년 동월: '+Math.round(r.ly/1000).toLocaleString('ko-KR')+' 톤','계획(목표): '+Math.round(r.plan/1000).toLocaleString('ko-KR')+' 톤']; }
+              return ['올해 합계(실적+예측): '+Math.round(r.fc/1000).toLocaleString('ko-KR')+' 톤','계획 달성률: '+ach.toFixed(1)+'%','전년 대비: '+(yo>=0?'+':'')+yo.toFixed(1)+'%'];}
           }}},
         scales:{x:{grid:{display:false},ticks:{color:tickC(),font:{size:11}}},
           y:{beginAtZero:true,grid:{color:gridC()},ticks:{color:tickC(),font:{size:10},callback:function(v){return (v/1000).toFixed(0)+'천톤';}}}}}
     });
 
     // ===== 보조 탭: 사업계획 대비 연간 예측 — 축종별 4개 도넛 (계획 대비 달성도) =====
+    // 집계 기간 표시: 실적 반영월(마지막 실적월)까지 실적 + 이후 예측 = 연간(1~12월)
+    var _laD=(SV_DATA.meta&&SV_DATA.meta.lastActualDate)||'2026/05/30';
+    var _laM=+(_laD.split('/')[1]||5);
+    var annualPeriodTxt='1~'+_laM+'월 실적 기준 달성률 (실적 있는 달까지만 예측·계획 집계) · 단위 천톤';
+    var _donutSubEls=document.querySelectorAll('#sv-pane-annual .sv-chart-sub');
+    if(_donutSubEls&&_donutSubEls[0]) _donutSubEls[0].textContent=annualPeriodTxt;
     var majPlan={},majFc={};
-    for(var k in SV_DATA.groups){var g=SV_DATA.groups[k];var pf=0,pp=0;for(var m2=1;m2<=12;m2++){pf+=gm(g,2026,m2).value;var pk2='26.'+pad(m2);pp+=(g.plan&&g.plan[pk2])||0;}majFc[g.maj]=(majFc[g.maj]||0)+pf;majPlan[g.maj]=(majPlan[g.maj]||0)+pp;}
+    // 실적이 있는 달(1~마지막 실적월)까지만 예측·계획을 합산하여 달성률 산출
+    for(var k in SV_DATA.groups){var g=SV_DATA.groups[k];var pf=0,pp=0;for(var m2=1;m2<=_laM;m2++){pf+=gm(g,2026,m2).value;var pk2='26.'+pad(m2);pp+=(g.plan&&g.plan[pk2])||0;}majFc[g.maj]=(majFc[g.maj]||0)+pf;majPlan[g.maj]=(majPlan[g.maj]||0)+pp;}
     var DONUT_SPECIES=['양돈','축우','양계','양어'];
     var MAJ_COLORS={'양돈':'#A02838','축우':'#5A7DA0','양계':'#C9A961','양어':'#3E8E7E'};
     DONUT_SPECIES.forEach(function(maj,di){
@@ -17755,7 +17777,7 @@ setTimeout(initExecutiveScenarioLab, 800);
         ctx.fillStyle=(_ach>=100?'#1F7A4D':_col); ctx.font='800 20px Pretendard,sans-serif';
         ctx.fillText(_ach.toFixed(0)+'%', cx, cy-14);
         ctx.fillStyle=isDark()?'#9FB0C8':'#5A6B7E'; ctx.font='600 10px Pretendard,sans-serif';
-        ctx.fillText('\uc608\uce21 '+(_fc/1000).toFixed(1)+'\ucc9c\ud1a4', cx, cy+6);
+        ctx.fillText('\uc2e4\uc801 '+(_fc/1000).toFixed(1)+'\ucc9c\ud1a4', cx, cy+6);
         ctx.fillText('\uacc4\ud68d '+(_pl/1000).toFixed(1)+'\ucc9c\ud1a4', cx, cy+19);
         ctx.restore();
       };})(fc,pl,ach,col)};
@@ -17764,14 +17786,14 @@ setTimeout(initExecutiveScenarioLab, 800);
       if(dEl){
         charts[cid]=new Chart(dEl,{
           type:'doughnut',
-          data:{labels:(fc<=pl?['\uc608\uce21(\ub2ec\uc131)','\uacc4\ud68d \uc794\uc5ec']:['\uacc4\ud68d','\ucd08\uacfc \uc608\uce21']),datasets:[
+          data:{labels:(fc<=pl?['\uc2e4\uc801(\ub2ec\uc131)','\uacc4\ud68d \uc794\uc5ec']:['\uacc4\ud68d','\ucd08\uacfc \uc2e4\uc801']),datasets:[
             {data:seg,backgroundColor:segColors,borderColor:isDark()?'#1B2230':'#fff',borderWidth:2,datalabels:{display:false}}
           ]},
           options:{responsive:true,maintainAspectRatio:false,cutout:'66%',layout:{padding:6},
             plugins:{legend:{display:false},datalabels:{display:false},latestLabel:{enabled:false},
               tooltip:{callbacks:{
                 label:function(c){return c.label+': '+(c.parsed/1000).toFixed(1)+' \ucc9c\ud1a4';},
-                afterBody:(function(_fc,_pl,_ach){return function(){return ['\uc5f0\uac04 \uc608\uce21: '+(_fc).toLocaleString('ko-KR')+' \ud1a4','\uc0ac\uc5c5\uacc4\ud68d: '+(_pl).toLocaleString('ko-KR')+' \ud1a4','\ub2ec\uc131\ub960: '+_ach.toFixed(1)+'%','\ucc28\uc774: '+((_fc-_pl)>=0?'+':'')+(_fc-_pl).toLocaleString('ko-KR')+' \ud1a4'];};})(fc,pl,ach)
+                afterBody:(function(_fc,_pl,_ach){return function(){return ['\uc2e4\uc801 \ub204\uacc4(1~'+_laM+'\uc6d4): '+(_fc).toLocaleString('ko-KR')+' \ud1a4','\uc0ac\uc5c5\uacc4\ud68d(1~'+_laM+'\uc6d4): '+(_pl).toLocaleString('ko-KR')+' \ud1a4','\ub2ec\uc131\ub960: '+_ach.toFixed(1)+'%','\ucc28\uc774: '+((_fc-_pl)>=0?'+':'')+(_fc-_pl).toLocaleString('ko-KR')+' \ud1a4'];};})(fc,pl,ach)
               }}}}
           ,plugins:[centerPlugin]
         });
@@ -17785,11 +17807,11 @@ setTimeout(initExecutiveScenarioLab, 800);
     rows.forEach(function(r){
       tP+=r.plan;tLs+=r.ly;tAs+=r.act;tFs+=r.fc;
       var yo=r.ly?((r.fc/r.ly-1)*100):0;
-      tb+='<tr><td>'+r.m+'월</td><td>'+statusKr[r.status]+'</td><td>'+fmt(r.plan/1000)+'</td><td>'+fmt(r.ly/1000)+'</td><td>'+(r.status==='forecast'?'-':fmt(r.act/1000))+'</td><td>'+fmt(r.fc/1000)+'</td><td>'+(yo>=0?'+':'')+yo.toFixed(1)+'%</td></tr>';
+      tb+='<tr><td>'+r.m+'월</td><td>'+statusKr[r.status]+'</td><td>'+fmt(r.plan/1000)+'</td><td>'+fmt(r.ly/1000)+'</td><td>'+(r.status==='forecast'?'-':fmt(r.act/1000))+'</td><td>'+(r.status==='forecast'?'<span style="color:var(--ink-light);">-</span>':fmt(r.fc/1000))+'</td><td>'+(yo>=0?'+':'')+yo.toFixed(1)+'%</td></tr>';
     });
     var mYo=tLs?((tFs/tLs-1)*100):0;
     tb+='<tr class="tot-row"><td>합계</td><td>-</td><td>'+fmt(tP/1000)+'</td><td>'+fmt(tLs/1000)+'</td><td>'+fmt(tAs/1000)+'</td><td>'+fmt(tFs/1000)+'</td><td>'+(mYo>=0?'+':'')+mYo.toFixed(1)+'%</td></tr></tbody>';
-    document.getElementById('svMonthTable').innerHTML='<caption style="caption-side:top;text-align:right;font-size:10px;color:var(--ink-light);padding-bottom:6px;">단위: 톤(t)</caption>'+th+tb;
+    document.getElementById('svMonthTable').innerHTML='<caption style="caption-side:top;text-align:right;font-size:10px;color:var(--ink-light);padding-bottom:6px;">단위: 톤(t) · 실적 없는 월(예측월)은 실적·예측 모두 "-"로 표기 · 합계는 연간(실적+예측) 기준</caption>'+th+tb;
 
     // ===== 보조 탭: 축종별/영업소별 연간 예측 그래프 =====
     var gDim=(document.getElementById('svGroupDim')||{}).value||'maj';
@@ -17811,6 +17833,8 @@ setTimeout(initExecutiveScenarioLab, 800);
     var gLy  =gKeys.map(function(kk){return Math.round(gAgg[kk].ly/1000);});
     destroyChart('svGroupChart');
     var gEl=document.getElementById('svGroupChart');
+    var _gSub=document.querySelector('#sv-pane-grouptbl .sv-chart-sub');
+    if(_gSub) _gSub.textContent='막대 위 수치는 막대값(천톤) · 연간 예측 = 1~'+_laM+'월 실적 + '+(_laM+1>12?'':((_laM+1)+'~12월 '))+'예측 합산(연간 전망) · 막대에 마우스를 올리면 계획 달성률이 나타납니다 · 단위 천톤';
     if(gEl){
       charts.svGroupChart=new Chart(gEl,{
         type:'bar',
@@ -21372,12 +21396,17 @@ body.dark #view-salesforecast .v25-method .v25-formula{ background:#1a2620; }
       +'※ 기존 방식은 당월 진행 페이스를 잔여일에 그대로 곱해 호조 그룹의 잔여를 과대 추정(진행 후반 최대 1.09배)했습니다. '
       +'현재 방식은 전년 계절성·요일패턴을 기준으로 삼아 이 부풀림을 제거했습니다.</p>';
 
-    var kpi=document.getElementById('svKpiGrid');
-    if(kpi && kpi.parentElement){
-      // KPI 다음에 삽입
-      if(kpi.nextSibling) kpi.parentElement.insertBefore(box, kpi.nextSibling);
-      else kpi.parentElement.appendChild(box);
-    } else view.appendChild(box);
+    // 분석 방법 탭(#sv-pane-method) 안에만 삽입 → 평상시 숨김, 탭 선택 시에만 표시
+    var methodPaneHost=document.getElementById('sv-pane-method');
+    if(methodPaneHost){
+      methodPaneHost.appendChild(box);
+    } else {
+      var kpi=document.getElementById('svKpiGrid');
+      if(kpi && kpi.parentElement){
+        if(kpi.nextSibling) kpi.parentElement.insertBefore(box, kpi.nextSibling);
+        else kpi.parentElement.appendChild(box);
+      } else view.appendChild(box);
+    }
   }
 
   // ── ⑤ 분석 데이터 엑셀 다운로드 ───────────────────────────────────────
