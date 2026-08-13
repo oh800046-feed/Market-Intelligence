@@ -1593,6 +1593,14 @@ document.querySelectorAll('.check-filter').forEach(btn=>btn.addEventListener('cl
     for(let i=0;i<=4;i++){const y=p.t+i/4*(h-p.t-p.b-52),val=max-i/4*(max-min);ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(w-p.r,y);ctx.stroke();ctx.fillText(fmt(val,2),w-p.r+8,y+3)}
     const bw=Math.max(1.5,Math.min(range==='1H'?5:10,(w-p.l-p.r)/rows.length*.65));
     rows.forEach((r,i)=>{const x=xAt(i),up=r.c>=r.o,color=up?t.up:t.down;ctx.strokeStyle=color;ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(x,yAt(r.h));ctx.lineTo(x,yAt(r.l));ctx.stroke();const y1=yAt(Math.max(r.o,r.c)),y2=yAt(Math.min(r.o,r.c));ctx.fillRect(x-bw/2,y1,bw,Math.max(1,y2-y1));ctx.globalAlpha=.25;ctx.fillRect(x-bw/2,volY+volH-(r.v||0)/maxVol*volH,bw,(r.v||0)/maxVol*volH);ctx.globalAlpha=1});
+    ctx.fillStyle=t.muted;ctx.textAlign='center';ctx.textBaseline='top';ctx.font='10px ui-monospace,monospace';
+    const ticks=Math.min(6,rows.length);
+    for(let i=0;i<ticks;i++){
+      const idx=Math.round(i*(rows.length-1)/(ticks-1||1)),row=rows[idx],x=xAt(idx);
+      const label=range==='1H'?row.d.slice(5,10)+' '+row.d.slice(11,13)+'h':row.d.slice(5,7)+'/'+row.d.slice(8,10);
+      ctx.fillText(label,x,volY+volH+8);
+    }
+    ctx.textAlign='left';
     return true;
   }
   let wheatRange='1Y';
