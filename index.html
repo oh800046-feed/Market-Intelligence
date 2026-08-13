@@ -1373,5 +1373,251 @@ document.querySelectorAll('.check-filter').forEach(btn=>btn.addEventListener('cl
   document.getElementById('downloadChecklistExcel')?.addEventListener('click',()=>makeXlsx([checklistSheet()],'DaehanFeed_Field_Checklist_2026-07-12.xlsx'));
   window.DF_XLSX={makeXlsx,chartRows,downloadChart};
 })();
+</script>
+<script id="df-soymeal-futures-contract-chart">
+(function(){
+  'use strict';
+  const API_BASE=window.CORN_API_BASE||'/api/corn-futures';
+  const monthNames={F:'1월물',H:'3월물',K:'5월물',N:'7월물',Q:'8월물',U:'9월물',V:'10월물',Z:'12월물'};
+  const monthOrderByYear={2026:['U','V','Z'],2027:['F','H','K','N','Q','U','V','Z']};
+  let activeRange='1Y',hoverHits=[],renderSeq=0;
+  const liveCache=new Map();
+  const tip=document.createElement('div');
+  tip.className='corn-chart-tooltip';
+  document.body.appendChild(tip);
+
+  function insertCard(){
+    if(document.getElementById('soymealContractCanvas'))return;
+    const anchor=document.querySelector('.corn-contract-card');
+    if(!anchor)return;
+    anchor.insertAdjacentHTML('afterend', `
+<div class="chart-card full corn-contract-card soymeal-contract-card">
+<div class="chart-card-head">
+<div><div class="klabel">DELAYED SNAPSHOT</div><div class="chart-card-title">대두박 선물 월물 시세</div></div>
+<div class="chart-head-tools">
+<div class="corn-contract-controls" aria-label="대두박 선물 월물 선택">
+<div class="corn-contract-field"><label for="soymealContractYear">연도</label><select id="soymealContractYear"><option selected value="2026">2026</option><option value="2027">2027</option></select></div>
+<div class="corn-contract-field"><label for="soymealContractMonth">월물</label><select id="soymealContractMonth"></select></div>
+<span class="corn-contract-symbol" id="soymealContractSymbol">ZM=F</span>
+</div>
+</div>
+</div>
+<div class="corn-price-panel">
+<div class="corn-market-toolbar">
+<div class="corn-range-tabs" aria-label="대두박 선물 시세 기간">
+<button class="corn-range-btn soymeal-range-btn" data-soymeal-range="1H" type="button">1H</button>
+<button class="corn-range-btn soymeal-range-btn" data-soymeal-range="1M" type="button">1M</button>
+<button class="corn-range-btn soymeal-range-btn" data-soymeal-range="3M" type="button">3M</button>
+<button class="corn-range-btn soymeal-range-btn" data-soymeal-range="6M" type="button">6M</button>
+<button class="corn-range-btn soymeal-range-btn active" data-soymeal-range="1Y" type="button">1Y</button>
+</div>
+<div class="corn-ohlc" id="soymealContractOhlc">O <strong>-</strong> H <strong>-</strong> L <strong>-</strong> C <strong>-</strong></div>
+</div>
+<canvas aria-label="대두박 선물 월물 시세 차트" id="soymealContractCanvas"></canvas>
+<div class="corn-price-empty" id="soymealContractEmpty" hidden><div><strong>대두박 선물 데이터를 불러오지 못했습니다.</strong><br/>API 연결 또는 선택한 월물을 확인해 주세요.</div></div>
+</div>
+<div class="chart-foot"><span><strong>표시 데이터:</strong> 새로고침 때 서버 API로 Yahoo Finance 지연 시세를 조회합니다. 대두박 ZM 선물은 $/short ton 기준입니다.</span><a class="source-link" href="https://finance.yahoo.com/quote/ZM%3DF/" rel="noopener" target="_blank">Yahoo Finance ZM=F</a></div>
+<div class="corn-contract-note"><strong>주의:</strong> CME 유료 실시간 시세가 아니라 Yahoo Finance 경유 지연 시세입니다. API 실패 시 이 패널은 오류 상태로 표시됩니다.</div>
+</div>`);
+  }
+  function hideTip(){tip.style.display='none'}
+  function fmt(v,d=2){return Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})}
+  function theme(){
+    const st=getComputedStyle(document.body);
+    return {bg:st.getPropertyValue('--card').trim()||'#fff',ink:st.getPropertyValue('--ink').trim()||'#111',muted:st.getPropertyValue('--muted').trim()||'#667',line:st.getPropertyValue('--line2').trim()||'#ddd',up:st.getPropertyValue('--red').trim()||'#9d283b',down:st.getPropertyValue('--blue').trim()||'#245b9e'};
+  }
+  function controls(){
+    return {canvas:document.getElementById('soymealContractCanvas'),empty:document.getElementById('soymealContractEmpty'),year:document.getElementById('soymealContractYear'),month:document.getElementById('soymealContractMonth'),badge:document.getElementById('soymealContractSymbol'),ohlc:document.getElementById('soymealContractOhlc'),buttons:[...document.querySelectorAll('.soymeal-range-btn')]};
+  }
+  function populateMonths(){
+    const c=controls(),year=c.year.value,before=c.month.value,codes=monthOrderByYear[year]||[];
+    c.month.innerHTML='';
+    codes.forEach(code=>{const opt=document.createElement('option');opt.value=code;opt.textContent=monthNames[code];c.month.appendChild(opt)});
+    c.month.value=codes.includes(before)?before:(codes.includes('U')?'U':codes[0]||'');
+  }
+  function currentContract(){
+    const c=controls(),year=c.year.value||'2026',code=c.month.value||'U';
+    return {symbol:'ZM'+code+String(year).slice(-2)+'.CBT',label:year+'년 '+(monthNames[code]||'월물')};
+  }
+  function apiParams(symbol){return activeRange==='1H'?{symbol,interval:'1h',range:'60d'}:{symbol,interval:'1d',range:'1y'}}
+  async function fetchLive(symbol){
+    const p=apiParams(symbol),key=p.symbol+'|'+p.interval+'|'+p.range;
+    if(liveCache.has(key))return liveCache.get(key);
+    const url=API_BASE+'?symbol='+encodeURIComponent(p.symbol)+'&interval='+p.interval+'&range='+p.range+'&_='+Date.now();
+    const res=await fetch(url,{cache:'no-store'});
+    if(!res.ok)throw new Error('API '+res.status);
+    const json=await res.json();
+    if(!json||!Array.isArray(json.rows)||json.rows.length<2)throw new Error('empty API rows');
+    liveCache.set(key,json);
+    return json;
+  }
+  function rangeRows(rows){
+    if(activeRange==='1H'||activeRange==='1Y')return rows;
+    const days={'1M':31,'3M':93,'6M':186}[activeRange]||365,last=new Date(rows[rows.length-1].d+'T00:00:00Z').getTime(),cutoff=last-days*86400000;
+    return rows.filter(row=>new Date(row.d+'T00:00:00Z').getTime()>=cutoff);
+  }
+  function xLabel(row){if(activeRange==='1H')return row.d.slice(5,10)+' '+row.d.slice(11,13)+'h';const d=new Date(row.d+'T00:00:00Z');return (d.getMonth()+1)+'/'+String(d.getDate()).padStart(2,'0')}
+  function draw(rows,meta){
+    const c=controls(),canvas=c.canvas,r=canvas.getBoundingClientRect();
+    if(r.width<40||r.height<40){setTimeout(render,120);return}
+    const dpr=Math.min(window.devicePixelRatio||1,2),ctx=canvas.getContext('2d'),t=theme();
+    canvas.width=Math.max(320,Math.round(r.width*dpr));canvas.height=Math.max(220,Math.round(r.height*dpr));ctx.setTransform(dpr,0,0,dpr,0,0);
+    const w=canvas.width/dpr,h=canvas.height/dpr;ctx.clearRect(0,0,w,h);ctx.fillStyle=t.bg;ctx.fillRect(0,0,w,h);
+    rows=rangeRows(rows).filter(row=>[row.o,row.h,row.l,row.c].every(n=>Number.isFinite(Number(n))&&Number(n)>0));
+    if(rows.length<2){c.empty.hidden=false;return}c.empty.hidden=true;
+    const last=rows[rows.length-1],first=rows[0],chg=last.c-first.c,pct=first.c?chg/first.c*100:0;
+    c.ohlc.innerHTML='O <strong>'+fmt(last.o)+'</strong> H <strong>'+fmt(last.h)+'</strong> L <strong>'+fmt(last.l)+'</strong> C <strong>'+fmt(last.c)+'</strong>';
+    const pad={l:58,r:70,t:50,b:34},volH=Math.max(54,Math.min(86,h*.18)),priceBox={x:pad.l,y:pad.t,w:w-pad.l-pad.r,h:h-pad.t-pad.b-volH-16},volBox={x:pad.l,y:pad.t+(h-pad.t-pad.b-volH-16)+12,w:w-pad.l-pad.r,h:volH};
+    let min=Math.min(...rows.map(x=>x.l)),max=Math.max(...rows.map(x=>x.h));if(min===max){min-=1;max+=1}const span=max-min;min-=span*.08;max+=span*.08;
+    const maxVol=Math.max(1,...rows.map(x=>x.v||0)),xAt=i=>priceBox.x+(rows.length===1?0:i/(rows.length-1)*priceBox.w),yAt=v=>priceBox.y+(max-v)/(max-min)*priceBox.h,nearest=rows.length>1?priceBox.w/(rows.length-1):priceBox.w;
+    hoverHits=rows.map((row,i)=>({x:xAt(i),row,meta,priceBox,volBox,hitW:Math.max(8,Math.min(18,nearest*.55))}));
+    ctx.strokeStyle=t.line;ctx.lineWidth=1;ctx.font='10px ui-monospace, monospace';ctx.fillStyle=t.muted;ctx.textBaseline='middle';
+    for(let i=0;i<=4;i++){const y=priceBox.y+i/4*priceBox.h,val=max-i/4*(max-min);ctx.beginPath();ctx.moveTo(priceBox.x,y);ctx.lineTo(priceBox.x+priceBox.w,y);ctx.stroke();ctx.fillText(fmt(val,2),priceBox.x+priceBox.w+8,y)}
+    ctx.beginPath();ctx.moveTo(volBox.x,volBox.y);ctx.lineTo(volBox.x+volBox.w,volBox.y);ctx.stroke();
+    const bw=Math.max(1.5,Math.min(activeRange==='1H'?5:10,priceBox.w/rows.length*.65));
+    rows.forEach((row,i)=>{const x=xAt(i),up=row.c>=row.o,color=up?t.up:t.down;ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,yAt(row.h));ctx.lineTo(x,yAt(row.l));ctx.stroke();const y1=yAt(Math.max(row.o,row.c)),y2=yAt(Math.min(row.o,row.c));ctx.fillRect(x-bw/2,y1,bw,Math.max(1,y2-y1));ctx.globalAlpha=.28;ctx.fillRect(x-bw/2,volBox.y+volBox.h-(row.v||0)/maxVol*volBox.h,bw,(row.v||0)/maxVol*volBox.h);ctx.globalAlpha=1});
+    ctx.fillStyle=t.ink;ctx.font='700 12px ui-monospace, monospace';ctx.textBaseline='alphabetic';ctx.fillText(meta.label+' · '+meta.symbol.replace('.CBT','')+' · '+(activeRange==='1H'?'1시간봉':'일봉'),priceBox.x,24);
+    ctx.fillStyle=chg>=0?t.up:t.down;ctx.fillText((chg>=0?'+':'')+fmt(chg,2)+' ('+(pct>=0?'+':'')+pct.toFixed(2)+'%)',priceBox.x+250,24);
+    ctx.fillStyle=t.muted;ctx.font='10px ui-monospace, monospace';ctx.fillText('updated '+meta.updated+' · '+meta.source,priceBox.x,40);
+    ctx.textAlign='center';ctx.textBaseline='top';const ticks=Math.min(6,rows.length);for(let i=0;i<ticks;i++){const idx=Math.round(i*(rows.length-1)/(ticks-1||1));ctx.fillText(xLabel(rows[idx]),xAt(idx),volBox.y+volBox.h+8)}ctx.textAlign='left';
+  }
+  async function render(){
+    const seq=++renderSeq,c=controls();populateMonths();const contract=currentContract();
+    c.badge.textContent=contract.label+' · '+contract.symbol.replace('.CBT','')+(activeRange==='1H'?' · 1시간봉':'')+' · API 조회중';
+    try{const live=await fetchLive(contract.symbol);if(seq!==renderSeq)return;c.badge.textContent=contract.label+' · '+contract.symbol.replace('.CBT','')+(activeRange==='1H'?' · 1시간봉':'')+' · API 지연 시세';draw(live.rows,{...contract,updated:live.updated||'-',source:'API 지연 시세'});}
+    catch(err){if(seq!==renderSeq)return;console.warn('soymeal futures API failed',err);c.badge.textContent=contract.label+' · '+contract.symbol.replace('.CBT','')+' · API 실패';c.empty.hidden=false;c.empty.querySelector('div').innerHTML='<strong>대두박 시세를 불러오지 못했습니다.</strong><br/>/api/corn-futures 응답 또는 Yahoo 심볼을 확인해 주세요.';}
+  }
+  function init(){
+    insertCard();const c=controls();if(!c.canvas||!c.year||!c.month)return;populateMonths();
+    c.canvas.addEventListener('mousemove',e=>{if(!hoverHits.length){hideTip();return}const r=c.canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top,b=hoverHits[0],inside=x>=b.priceBox.x&&x<=b.priceBox.x+b.priceBox.w&&y>=b.priceBox.y-8&&y<=b.volBox.y+b.volBox.h+18;if(!inside){hideTip();return}let hit=null,dist=Infinity;hoverHits.forEach(h=>{const d=Math.abs(h.x-x);if(d<dist){dist=d;hit=h}});if(!hit||dist>hit.hitW){hideTip();return}const row=hit.row,chg=row.c-row.o,pct=row.o?chg/row.o*100:0;tip.innerHTML='<b>'+hit.meta.label+' · '+row.d+'</b><span>O <strong>'+fmt(row.o)+'</strong></span><span>H <strong>'+fmt(row.h)+'</strong></span><span>L <strong>'+fmt(row.l)+'</strong></span><span>C <strong>'+fmt(row.c)+'</strong></span><span>Δ <strong>'+((chg>=0?'+':'')+fmt(chg)+' / '+(pct>=0?'+':'')+pct.toFixed(2)+'%')+'</strong></span><span>Vol <strong>'+Number(row.v||0).toLocaleString('en-US')+'</strong></span>';tip.style.left=Math.min(window.innerWidth-190,e.clientX+14)+'px';tip.style.top=Math.max(8,Math.min(window.innerHeight-150,e.clientY-28))+'px';tip.style.display='block'});
+    c.canvas.addEventListener('mouseleave',hideTip);c.year.addEventListener('change',()=>{hideTip();render()});c.month.addEventListener('change',()=>{hideTip();render()});c.buttons.forEach(btn=>btn.addEventListener('click',()=>{activeRange=btn.dataset.soymealRange||'1Y';c.buttons.forEach(x=>x.classList.toggle('active',x===btn));hideTip();render()}));window.addEventListener('resize',()=>setTimeout(render,80));document.getElementById('darkToggle')?.addEventListener('click',()=>setTimeout(render,100));render();
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
+})();
+</script>
+<script id="df-extra-market-series">
+(function(){
+  'use strict';
+  const API_BASE=window.CORN_API_BASE||'/api/corn-futures';
+  const cache=new Map();
+  const wheatMonths={H:'3월물',K:'5월물',N:'7월물',U:'9월물',Z:'12월물'};
+  const wheatOrder={2026:['U','Z'],2027:['H','K','N','U','Z']};
+  const extraSeries=[
+    {key:'krw',title:'원달러 환율',symbol:'KRW=X',unit:'KRW/USD',source:'Yahoo Finance KRW=X'},
+    {key:'wti',title:'WTI 유가',symbol:'CL=F',unit:'USD/bbl',source:'Yahoo Finance CL=F'},
+    {key:'brent',title:'Brent 유가',symbol:'BZ=F',unit:'USD/bbl',source:'Yahoo Finance BZ=F'},
+    {key:'bdi',title:'해상운임 BDI',symbol:'BALTIC_DRY_INDEX',unit:'index points',source:'Baltic Exchange daily index'}
+  ];
+  function insert(){
+    if(document.getElementById('wheatContractCanvas'))return;
+    const anchor=document.querySelector('.soymeal-contract-card')||document.querySelector('.corn-contract-card');
+    if(!anchor)return;
+    anchor.insertAdjacentHTML('afterend', `
+<div class="chart-card full corn-contract-card wheat-contract-card">
+<div class="chart-card-head"><div><div class="klabel">DELAYED SNAPSHOT</div><div class="chart-card-title">소맥 선물 월물 시세</div></div>
+<div class="chart-head-tools"><div class="corn-contract-controls" aria-label="소맥 선물 월물 선택">
+<div class="corn-contract-field"><label for="wheatContractYear">연도</label><select id="wheatContractYear"><option selected value="2026">2026</option><option value="2027">2027</option></select></div>
+<div class="corn-contract-field"><label for="wheatContractMonth">월물</label><select id="wheatContractMonth"></select></div>
+<span class="corn-contract-symbol" id="wheatContractSymbol">ZW=F</span>
+</div></div></div>
+<div class="corn-price-panel"><div class="corn-market-toolbar"><div class="corn-range-tabs" aria-label="소맥 선물 시세 기간">
+<button class="corn-range-btn wheat-range-btn" data-wheat-range="1H" type="button">1H</button>
+<button class="corn-range-btn wheat-range-btn" data-wheat-range="1M" type="button">1M</button>
+<button class="corn-range-btn wheat-range-btn" data-wheat-range="3M" type="button">3M</button>
+<button class="corn-range-btn wheat-range-btn" data-wheat-range="6M" type="button">6M</button>
+<button class="corn-range-btn wheat-range-btn active" data-wheat-range="1Y" type="button">1Y</button>
+</div><div class="corn-ohlc" id="wheatContractOhlc">O <strong>-</strong> H <strong>-</strong> L <strong>-</strong> C <strong>-</strong></div></div>
+<canvas aria-label="소맥 선물 월물 시세 차트" id="wheatContractCanvas"></canvas>
+<div class="corn-price-empty" id="wheatContractEmpty" hidden><div><strong>소맥 선물 데이터를 불러오지 못했습니다.</strong><br/>API 연결 또는 선택한 월물을 확인해 주세요.</div></div></div>
+<div class="chart-foot"><span><strong>표시 데이터:</strong> Yahoo Finance 지연 시세. 소맥 ZW 선물은 CBOT SRW Wheat 기준입니다.</span><a class="source-link" href="https://finance.yahoo.com/quote/ZW%3DF/" rel="noopener" target="_blank">Yahoo Finance ZW=F</a></div>
+</div>
+<div class="chart-card full corn-contract-card extra-market-card">
+<div class="chart-card-head"><div><div class="klabel">REFERENCE MARKET SIGNALS</div><div class="chart-card-title">환율 · 유가 · 해상운임</div></div><span class="corn-contract-symbol" id="extraMarketStatus">API 조회중</span></div>
+<div class="extra-market-grid" id="extraMarketGrid"></div>
+<div class="chart-foot"><span><strong>주의:</strong> 원달러/유가는 Yahoo Finance 지연 시세, BDI는 Baltic Exchange 일별 발표 지수의 공개 최신값입니다. BDI는 1시간봉/장중 OHLC가 아닙니다.</span></div>
+</div>`);
+  }
+  function addStyle(){
+    if(document.getElementById('extraMarketStyle'))return;
+    const style=document.createElement('style');
+    style.id='extraMarketStyle';
+    style.textContent='.extra-market-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:14px}.extra-market-item{border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:12px;min-width:0}.extra-market-top{display:flex;justify-content:space-between;gap:10px;align-items:start}.extra-market-name{font-weight:800;color:var(--ink);font-size:13px}.extra-market-value{font:800 18px ui-monospace,monospace;color:var(--red);white-space:nowrap}.extra-market-meta{font-size:10px;color:var(--muted);margin-top:3px}.extra-market-chart{width:100%;height:140px;margin-top:8px;display:block}@media(max-width:1100px){.extra-market-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:640px){.extra-market-grid{grid-template-columns:1fr}}';
+    document.head.appendChild(style);
+  }
+  function fmt(v,d=2){return Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})}
+  function theme(){
+    const st=getComputedStyle(document.body);
+    return {bg:st.getPropertyValue('--card').trim()||'#fff',ink:st.getPropertyValue('--ink').trim()||'#111',muted:st.getPropertyValue('--muted').trim()||'#667',line:st.getPropertyValue('--line2').trim()||'#ddd',up:st.getPropertyValue('--red').trim()||'#9d283b',down:st.getPropertyValue('--blue').trim()||'#245b9e'};
+  }
+  async function fetchSeries(symbol,interval='1d',range='1y'){
+    const key=symbol+'|'+interval+'|'+range;
+    if(cache.has(key))return cache.get(key);
+    const res=await fetch(API_BASE+'?symbol='+encodeURIComponent(symbol)+'&interval='+interval+'&range='+range+'&_='+Date.now(),{cache:'no-store'});
+    if(!res.ok)throw new Error(symbol+' API '+res.status);
+    const json=await res.json();
+    if(!json||!Array.isArray(json.rows)||!json.rows.length)throw new Error(symbol+' empty rows');
+    cache.set(key,json);
+    return json;
+  }
+  function rangeRows(rows,range){
+    if(range==='1H'||range==='1Y')return rows;
+    const days={'1M':31,'3M':93,'6M':186}[range]||365,last=new Date(rows[rows.length-1].d.replace(' ','T')+(rows[rows.length-1].d.length===10?'T00:00:00Z':'Z')).getTime(),cutoff=last-days*86400000;
+    return rows.filter(row=>new Date(row.d.replace(' ','T')+(row.d.length===10?'T00:00:00Z':'Z')).getTime()>=cutoff);
+  }
+  function drawLine(canvas,rows,label,range){
+    const rect=canvas.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,2),ctx=canvas.getContext('2d'),t=theme();
+    canvas.width=Math.max(260,Math.round(rect.width*dpr));canvas.height=Math.max(120,Math.round(rect.height*dpr));ctx.setTransform(dpr,0,0,dpr,0,0);
+    const w=canvas.width/dpr,h=canvas.height/dpr,p={l:38,r:16,t:14,b:24};
+    ctx.clearRect(0,0,w,h);ctx.fillStyle=t.bg;ctx.fillRect(0,0,w,h);
+    rows=rangeRows(rows,range).filter(r=>Number.isFinite(Number(r.c)));
+    if(!rows.length){ctx.fillStyle=t.muted;ctx.fillText('No data',p.l,p.t+20);return}
+    let min=Math.min(...rows.map(r=>r.c)),max=Math.max(...rows.map(r=>r.c));if(min===max){min-=1;max+=1}const span=max-min;min-=span*.08;max+=span*.08;
+    const xAt=i=>p.l+(rows.length===1?.5:i/(rows.length-1))*(w-p.l-p.r),yAt=v=>p.t+(max-v)/(max-min)*(h-p.t-p.b);
+    ctx.strokeStyle=t.line;ctx.lineWidth=1;ctx.font='10px ui-monospace,monospace';ctx.fillStyle=t.muted;
+    for(let i=0;i<=3;i++){const y=p.t+i/3*(h-p.t-p.b),val=max-i/3*(max-min);ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(w-p.r,y);ctx.stroke();ctx.fillText(fmt(val,rows[0].c>100?0:2),4,y+3)}
+    ctx.strokeStyle=rows[rows.length-1].c>=rows[0].c?t.up:t.down;ctx.lineWidth=2;ctx.beginPath();rows.forEach((r,i)=>{const x=xAt(i),y=yAt(r.c);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y)});ctx.stroke();
+    const last=rows[rows.length-1];ctx.fillStyle=ctx.strokeStyle;ctx.beginPath();ctx.arc(xAt(rows.length-1),yAt(last.c),3,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=t.muted;ctx.textAlign='right';ctx.fillText(label,w-p.r,h-8);ctx.textAlign='left';
+  }
+  function drawCandles(canvas,rows,range,ohlcBox){
+    const rect=canvas.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,2),ctx=canvas.getContext('2d'),t=theme();
+    canvas.width=Math.max(320,Math.round(rect.width*dpr));canvas.height=Math.max(220,Math.round(rect.height*dpr));ctx.setTransform(dpr,0,0,dpr,0,0);
+    const w=canvas.width/dpr,h=canvas.height/dpr,p={l:58,r:70,t:42,b:32};
+    ctx.clearRect(0,0,w,h);ctx.fillStyle=t.bg;ctx.fillRect(0,0,w,h);
+    rows=rangeRows(rows,range).filter(r=>[r.o,r.h,r.l,r.c].every(n=>Number.isFinite(Number(n))&&Number(n)>0));
+    if(rows.length<2)return false;
+    const last=rows[rows.length-1];if(ohlcBox)ohlcBox.innerHTML='O <strong>'+fmt(last.o)+'</strong> H <strong>'+fmt(last.h)+'</strong> L <strong>'+fmt(last.l)+'</strong> C <strong>'+fmt(last.c)+'</strong>';
+    let min=Math.min(...rows.map(r=>r.l)),max=Math.max(...rows.map(r=>r.h));const span=max-min;min-=span*.08;max+=span*.08;
+    const xAt=i=>p.l+i/(rows.length-1)*(w-p.l-p.r),yAt=v=>p.t+(max-v)/(max-min)*(h-p.t-p.b-52),maxVol=Math.max(1,...rows.map(r=>r.v||0)),volY=h-p.b-42,volH=38;
+    ctx.strokeStyle=t.line;ctx.lineWidth=1;ctx.font='10px ui-monospace,monospace';ctx.fillStyle=t.muted;
+    for(let i=0;i<=4;i++){const y=p.t+i/4*(h-p.t-p.b-52),val=max-i/4*(max-min);ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(w-p.r,y);ctx.stroke();ctx.fillText(fmt(val,2),w-p.r+8,y+3)}
+    const bw=Math.max(1.5,Math.min(range==='1H'?5:10,(w-p.l-p.r)/rows.length*.65));
+    rows.forEach((r,i)=>{const x=xAt(i),up=r.c>=r.o,color=up?t.up:t.down;ctx.strokeStyle=color;ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(x,yAt(r.h));ctx.lineTo(x,yAt(r.l));ctx.stroke();const y1=yAt(Math.max(r.o,r.c)),y2=yAt(Math.min(r.o,r.c));ctx.fillRect(x-bw/2,y1,bw,Math.max(1,y2-y1));ctx.globalAlpha=.25;ctx.fillRect(x-bw/2,volY+volH-(r.v||0)/maxVol*volH,bw,(r.v||0)/maxVol*volH);ctx.globalAlpha=1});
+    return true;
+  }
+  let wheatRange='1Y';
+  function wheatControls(){return {canvas:document.getElementById('wheatContractCanvas'),year:document.getElementById('wheatContractYear'),month:document.getElementById('wheatContractMonth'),badge:document.getElementById('wheatContractSymbol'),ohlc:document.getElementById('wheatContractOhlc'),empty:document.getElementById('wheatContractEmpty'),buttons:[...document.querySelectorAll('.wheat-range-btn')]}}
+  function populateWheat(){const c=wheatControls(),year=c.year.value,before=c.month.value,codes=wheatOrder[year]||[];c.month.innerHTML='';codes.forEach(code=>{const opt=document.createElement('option');opt.value=code;opt.textContent=wheatMonths[code];c.month.appendChild(opt)});c.month.value=codes.includes(before)?before:(codes.includes('U')?'U':codes[0]||'')}
+  async function renderWheat(){
+    const c=wheatControls();populateWheat();const year=c.year.value||'2026',code=c.month.value||'U',symbol='ZW'+code+String(year).slice(-2)+'.CBT',label=year+'년 '+(wheatMonths[code]||'월물');
+    c.badge.textContent=label+' · '+symbol.replace('.CBT','')+(wheatRange==='1H'?' · 1시간봉':'')+' · API 조회중';
+    try{const p=wheatRange==='1H'?{interval:'1h',range:'60d'}:{interval:'1d',range:'1y'},data=await fetchSeries(symbol,p.interval,p.range);c.badge.textContent=label+' · '+symbol.replace('.CBT','')+(wheatRange==='1H'?' · 1시간봉':'')+' · API 지연 시세';c.empty.hidden=drawCandles(c.canvas,data.rows,wheatRange,c.ohlc);}
+    catch(err){console.warn('wheat API failed',err);c.badge.textContent=label+' · '+symbol.replace('.CBT','')+' · API 실패';c.empty.hidden=false;}
+  }
+  async function renderExtra(){
+    const grid=document.getElementById('extraMarketGrid'),status=document.getElementById('extraMarketStatus');if(!grid)return;
+    grid.innerHTML=extraSeries.map(s=>'<div class="extra-market-item"><div class="extra-market-top"><div><div class="extra-market-name">'+s.title+'</div><div class="extra-market-meta">'+s.symbol+' · '+s.unit+'</div></div><div class="extra-market-value" id="extraValue_'+s.key+'">-</div></div><canvas class="extra-market-chart" id="extraCanvas_'+s.key+'"></canvas><div class="extra-market-meta" id="extraMeta_'+s.key+'">'+s.source+'</div></div>').join('');
+    let ok=0;
+    await Promise.all(extraSeries.map(async s=>{try{const data=await fetchSeries(s.symbol,'1d','1y'),rows=data.rows,last=rows[rows.length-1],first=rows[0],chg=last.c-first.c,pct=first.c?chg/first.c*100:0;document.getElementById('extraValue_'+s.key).textContent=fmt(last.c,last.c>100?2:2);document.getElementById('extraMeta_'+s.key).textContent=(data.updated||'-')+' · '+(chg>=0?'+':'')+fmt(chg,2)+' / '+(pct>=0?'+':'')+pct.toFixed(2)+'%';drawLine(document.getElementById('extraCanvas_'+s.key),rows,s.unit,'1Y');ok++;}catch(err){console.warn('extra series failed',s.symbol,err);document.getElementById('extraMeta_'+s.key).textContent='API 실패 · 출처/심볼 확인 필요';}}));
+    if(status)status.textContent=ok+'/'+extraSeries.length+'개 API 표시';
+  }
+  function init(){
+    addStyle();insert();const c=wheatControls();if(!c.canvas)return;
+    populateWheat();c.year.addEventListener('change',renderWheat);c.month.addEventListener('change',renderWheat);c.buttons.forEach(btn=>btn.addEventListener('click',()=>{wheatRange=btn.dataset.wheatRange||'1Y';c.buttons.forEach(x=>x.classList.toggle('active',x===btn));renderWheat()}));
+    window.addEventListener('resize',()=>{setTimeout(renderWheat,80);setTimeout(renderExtra,100)});document.getElementById('darkToggle')?.addEventListener('click',()=>{setTimeout(renderWheat,100);setTimeout(renderExtra,120)});
+    renderWheat();renderExtra();
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
+})();
 </script></body>
 </html>
