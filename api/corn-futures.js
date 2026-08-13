@@ -1,7 +1,10 @@
 const https = require('https');
 
 const ALLOWED_SYMBOLS = new Set([
-  'ZCU26.CBT','ZCZ26.CBT','ZCH27.CBT','ZCK27.CBT','ZCN27.CBT','ZCU27.CBT','ZCZ27.CBT'
+  'ZCU26.CBT','ZCZ26.CBT','ZCH27.CBT','ZCK27.CBT','ZCN27.CBT','ZCU27.CBT','ZCZ27.CBT',
+  'ZM=F','ZMU26.CBT','ZMV26.CBT','ZMZ26.CBT','ZMF27.CBT','ZMH27.CBT','ZMK27.CBT','ZMN27.CBT','ZMQ27.CBT','ZMU27.CBT','ZMV27.CBT','ZMZ27.CBT',
+  'ZW=F','ZWU26.CBT','ZWZ26.CBT','ZWH27.CBT','ZWK27.CBT','ZWN27.CBT','ZWU27.CBT','ZWZ27.CBT',
+  'KRW=X','USDKRW=X','CL=F','BZ=F','BALTIC_DRY_INDEX'
 ]);
 
 function send(res, status, body) {
@@ -53,6 +56,48 @@ function getJson(url) {
   });
 }
 
+function getText(url) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 market-dashboard' },
+      timeout: 12000,
+      family: 4,
+    }, (response) => {
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => { body += chunk; });
+      response.on('end', () => {
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          reject(new Error('Text request failed: ' + response.statusCode));
+          return;
+        }
+        resolve(body);
+      });
+    });
+    request.on('timeout', () => request.destroy(new Error('Text request timeout')));
+    request.on('error', reject);
+  });
+}
+
+async function getBalticDryIndex() {
+  const html = await getText('https://www.oilpriceapi.com/prices/freight-indices/baltic-dry-index');
+  const valueMatch = html.match(/<div class="[^"]*text-6xl[^"]*"[^>]*>\s*([\d,]+(?:\.\d+)?)\s*<\/div>/);
+  const dateMatch = html.match(/Last published:\s*(?:<!-- -->)?([^<]+?)(?:<!-- -->)?\s*GMT/);
+  if (!valueMatch) throw new Error('BDI value not found');
+  const value = Number(valueMatch[1].replace(/,/g, ''));
+  const published = dateMatch ? dateMatch[1].replace(/<!-- -->/g, '').trim() + ' GMT' : new Date().toISOString().slice(0, 10);
+  const day = new Date(published).toISOString().slice(0, 10);
+  return {
+    symbol: 'BALTIC_DRY_INDEX',
+    name: 'Baltic Dry Index',
+    interval: '1d',
+    range: 'latest',
+    updated: published,
+    source: 'OilPriceAPI public page / Baltic Exchange daily index',
+    rows: [{ d: day, o: value, h: value, l: value, c: value, v: 0 }],
+  };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -69,6 +114,14 @@ module.exports = async function handler(req, res) {
   const requestedRange = String(query.range || '').toLowerCase();
   if (!ALLOWED_SYMBOLS.has(symbol)) return send(res, 400, { error: 'Unsupported symbol' });
   if (!['1d', '1h'].includes(interval)) return send(res, 400, { error: 'Unsupported interval' });
+
+  if (symbol === 'BALTIC_DRY_INDEX') {
+    try {
+      return send(res, 200, await getBalticDryIndex());
+    } catch (err) {
+      return send(res, 500, { error: 'BDI proxy failed', detail: String(err && err.message || err) });
+    }
+  }
 
   const range = interval === '1h' ? '60d' : (requestedRange || '1y');
   const safeRange = interval === '1h' ? '60d' : (['1mo','3mo','6mo','1y','2y'].includes(range) ? range : '1y');
