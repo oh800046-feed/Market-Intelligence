@@ -80,21 +80,36 @@ function getText(url) {
 }
 
 async function getBalticDryIndex() {
-  const html = await getText('https://www.oilpriceapi.com/prices/freight-indices/baltic-dry-index');
-  const valueMatch = html.match(/<div class="[^"]*text-6xl[^"]*"[^>]*>\s*([\d,]+(?:\.\d+)?)\s*<\/div>/);
-  const dateMatch = html.match(/Last published:\s*(?:<!-- -->)?([^<]+?)(?:<!-- -->)?\s*GMT/);
-  if (!valueMatch) throw new Error('BDI value not found');
-  const value = Number(valueMatch[1].replace(/,/g, ''));
-  const published = dateMatch ? dateMatch[1].replace(/<!-- -->/g, '').trim() + ' GMT' : new Date().toISOString().slice(0, 10);
-  const day = new Date(published).toISOString().slice(0, 10);
+  const [historyJson, latestJson] = await Promise.all([
+    getJson('https://www.balticdryindex.com/data/history.json'),
+    getJson('https://www.balticdryindex.com/data/latest.json').catch(() => null),
+  ]);
+  const rows = (Array.isArray(historyJson) ? historyJson : (historyJson && historyJson.series) || [])
+    .filter((row) => row && row.date && Number.isFinite(Number(row.bdi ?? row.value)))
+    .map((row) => {
+      const value = Number(row.bdi ?? row.value);
+      return { d: String(row.date).slice(0, 10), o: value, h: value, l: value, c: value, v: 0 };
+    })
+    .sort((a, b) => a.d.localeCompare(b.d));
+  if (latestJson && latestJson.date && latestJson.bdi && Number.isFinite(Number(latestJson.bdi.value))) {
+    const day = String(latestJson.date).slice(0, 10);
+    const value = Number(latestJson.bdi.value);
+    const lastIndex = rows.findIndex((row) => row.d === day);
+    const latestRow = { d: day, o: value, h: value, l: value, c: value, v: 0 };
+    if (lastIndex >= 0) rows[lastIndex] = latestRow;
+    else rows.push(latestRow);
+    rows.sort((a, b) => a.d.localeCompare(b.d));
+  }
+  if (!rows.length) throw new Error('BDI history not found');
+  const last = rows[rows.length - 1];
   return {
     symbol: 'BALTIC_DRY_INDEX',
     name: 'Baltic Dry Index',
     interval: '1d',
-    range: 'latest',
-    updated: published,
-    source: 'OilPriceAPI public page / Baltic Exchange daily index',
-    rows: [{ d: day, o: value, h: value, l: value, c: value, v: 0 }],
+    range: 'history',
+    updated: (latestJson && latestJson.updated ? latestJson.date + ' ' + latestJson.updated : last.d),
+    source: 'BalticDryIndex.com history JSON / Baltic Exchange daily index',
+    rows,
   };
 }
 
