@@ -1,8 +1,0 @@
-{
-  "scripts": {
-    "start": "node local-server.js"
-  },
-  "engines": {
-    "node": ">=18"
-  }
-}
